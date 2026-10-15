@@ -63,17 +63,21 @@ Add the block diagram image to the `docs/` folder using the filename `rtl_block_
 ## 📂 Project Structure
 
 ```text
+
 parameterized-dual-port-ram/
 │
 ├── README.md
 │
-├── parameterized_ram.v
-├── ram_testbench.v
+├── rtl/
+│   └── parameterized_ram.v
+│
+├── testbench/
+│   └── ram_testbench.v
 │
 └── docs/
     ├── rtl_block_diagram.png
-    ├── simulation_waveform.png
-    └── synthesis_utilization.png
+    └── simulation_waveform.png
+
 ```
 
 *The synthesis utilization screenshot is optional and should be added after successful synthesis. Keep filenames consistent with the actual files uploaded to GitHub.*
