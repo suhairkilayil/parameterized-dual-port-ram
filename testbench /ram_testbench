@@ -1,0 +1,355 @@
+
+`timescale 1ns/1ps
+
+module testbench;
+
+    reg clk;
+    reg en_a, we_a;
+    reg en_b, we_b;
+
+    reg [7:0] addr_a, addr_b;
+    reg [7:0] din_a, din_b;
+
+    wire [7:0] dout_a, dout_b;
+
+    integer pass_count;
+    integer fail_count;
+
+    // =========================================
+    // DUAL-PORT RAM INSTANTIATION
+    // =========================================
+
+    parameterized_ram ram1 (
+        .clk(clk),
+
+        .en_a(en_a),
+        .we_a(we_a),
+        .addr_a(addr_a),
+        .din_a(din_a),
+        .dout_a(dout_a),
+
+        .en_b(en_b),
+        .we_b(we_b),
+        .addr_b(addr_b),
+        .din_b(din_b),
+        .dout_b(dout_b)
+    );
+
+    // Clock period = 10 ns
+    always #5 clk = ~clk;
+
+    // =========================================
+    // REUSABLE SELF-CHECKING TASK
+    // =========================================
+
+    task check_result;
+        input [7:0] actual;
+        input [7:0] expected;
+        input [255:0] test_name;
+
+        begin
+            if (actual === expected) begin
+                $display("PASS: %0s", test_name);
+                pass_count = pass_count + 1;
+            end
+            else begin
+                $display(
+                    "FAIL: %0s | Expected=%h, Actual=%h",
+                    test_name, expected, actual
+                );
+                fail_count = fail_count + 1;
+            end
+        end
+    endtask
+
+    // =========================================
+    // MAIN TEST SEQUENCE
+    // =========================================
+
+    initial begin
+
+        $dumpfile("dump.vcd");
+        $dumpvars(0, testbench);
+
+        // Initialize signals
+        clk = 0;
+
+        en_a = 0;
+        we_a = 0;
+        en_b = 0;
+        we_b = 0;
+
+        addr_a = 0;
+        addr_b = 0;
+        din_a = 0;
+        din_b = 0;
+
+        pass_count = 0;
+        fail_count = 0;
+
+        $display("========================================");
+        $display("DUAL-PORT RAM VERIFICATION");
+        $display("Boundary and Collision Testing");
+        $display("========================================");
+
+        // =====================================
+        // TEST 1: Port B writes 5A to address 20
+        // =====================================
+
+        @(negedge clk);
+        en_b = 1;
+        we_b = 1;
+        addr_b = 20;
+        din_b = 8'h5A;
+
+        @(negedge clk);
+        en_b = 0;
+        we_b = 0;
+
+        // =====================================
+        // TEST 2: Port A writes 25 to address 10
+        // while Port B reads address 20
+        // =====================================
+
+        en_a = 1;
+        we_a = 1;
+        addr_a = 10;
+        din_a = 8'h25;
+
+        en_b = 1;
+        we_b = 0;
+        addr_b = 20;
+
+        @(posedge clk);
+        #1;
+
+        check_result(
+            dout_b, 8'h5A,
+            "Port B reads address 20"
+        );
+
+        // =====================================
+        // TEST 3: Port A reads address 10
+        // =====================================
+
+        @(negedge clk);
+
+        en_a = 1;
+        we_a = 0;
+        addr_a = 10;
+
+        en_b = 0;
+        we_b = 0;
+
+        @(posedge clk);
+        #1;
+
+        check_result(
+            dout_a, 8'h25,
+            "Port A reads address 10"
+        );
+
+        // =====================================
+        // TEST 4: Write first address (0)
+        // and last address (255) simultaneously
+        // =====================================
+
+        @(negedge clk);
+
+        en_a = 1;
+        we_a = 1;
+        addr_a = 0;
+        din_a = 8'hA5;
+
+        en_b = 1;
+        we_b = 1;
+        addr_b = 255;
+        din_b = 8'hC3;
+
+        @(negedge clk);
+
+        en_a = 0;
+        we_a = 0;
+        en_b = 0;
+        we_b = 0;
+
+        // =====================================
+        // TEST 5: Read boundary address 0
+        // =====================================
+
+        en_a = 1;
+        we_a = 0;
+        addr_a = 0;
+
+        @(posedge clk);
+        #1;
+
+        check_result(
+            dout_a, 8'hA5,
+            "Boundary address 0"
+        );
+
+        // =====================================
+        // TEST 6: Read boundary address 255
+        // =====================================
+
+        @(negedge clk);
+
+        en_a = 0;
+
+        en_b = 1;
+        we_b = 0;
+        addr_b = 255;
+
+        @(posedge clk);
+        #1;
+
+        check_result(
+            dout_b, 8'hC3,
+            "Boundary address 255"
+        );
+
+        // =====================================
+        // TEST 7: Simultaneous writes to
+        // DIFFERENT addresses (30 and 40)
+        // =====================================
+
+        @(negedge clk);
+
+        en_a = 1;
+        we_a = 1;
+        addr_a = 30;
+        din_a = 8'h3A;
+
+        en_b = 1;
+        we_b = 1;
+        addr_b = 40;
+        din_b = 8'h4B;
+
+        @(negedge clk);
+
+        en_a = 0;
+        we_a = 0;
+        en_b = 0;
+        we_b = 0;
+
+        // Verify address 30
+        en_a = 1;
+        we_a = 0;
+        addr_a = 30;
+
+        @(posedge clk);
+        #1;
+
+        check_result(
+            dout_a, 8'h3A,
+            "Simultaneous write: address 30"
+        );
+
+        // Verify address 40
+        @(negedge clk);
+
+        en_a = 0;
+
+        en_b = 1;
+        we_b = 0;
+        addr_b = 40;
+
+        @(posedge clk);
+        #1;
+
+        check_result(
+            dout_b, 8'h4B,
+            "Simultaneous write: address 40"
+        );
+
+        // =====================================
+        // TEST 8: Initialize address 50 with 11
+        // =====================================
+
+        @(negedge clk);
+
+        en_a = 1;
+        we_a = 1;
+        addr_a = 50;
+        din_a = 8'h11;
+
+        en_b = 0;
+        we_b = 0;
+
+        @(negedge clk);
+
+        // =====================================
+        // TEST 9: Port A writes 22 while
+        // Port B reads the SAME address (50)
+        // =====================================
+
+        en_a = 1;
+        we_a = 1;
+        addr_a = 50;
+        din_a = 8'h22;
+
+        en_b = 1;
+        we_b = 0;
+        addr_b = 50;
+
+        @(posedge clk);
+        #1;
+
+        // Expected for this behavioral model:
+        // Port B sees old data, 11
+        check_result(
+            dout_b, 8'h11,
+            "Same-address read/write: old data"
+        );
+
+        // =====================================
+        // TEST 10: Read address 50 again
+        // to verify the new value (22)
+        // =====================================
+
+        @(negedge clk);
+
+        en_a = 0;
+        we_a = 0;
+
+        en_b = 1;
+        we_b = 0;
+        addr_b = 50;
+
+        @(posedge clk);
+        #1;
+
+        check_result(
+            dout_b, 8'h22,
+            "Same-address read/write: new data"
+        );
+
+        // =====================================
+        // FINAL SUMMARY
+        // =====================================
+
+        @(negedge clk);
+
+        en_a = 0;
+        we_a = 0;
+        en_b = 0;
+        we_b = 0;
+
+        $display("----------------------------------------");
+        $display("Tests passed: %0d", pass_count);
+        $display("Tests failed: %0d", fail_count);
+        $display("----------------------------------------");
+
+        if (fail_count == 0)
+            $display("OVERALL RESULT: PASS");
+        else
+            $display("OVERALL RESULT: FAIL");
+
+        $display("========================================");
+
+        $finish;
+
+    end
+
+endmodule
